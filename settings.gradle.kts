@@ -19,6 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "wavepass"
+rootProject.name = "WavePass"
 include(":app")
- 
