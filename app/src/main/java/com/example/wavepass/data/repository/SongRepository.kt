@@ -17,4 +17,6 @@ class SongRepository(private val songDao: SongDao) {
     suspend fun updateSong(song: Song) = songDao.update(song)
 
     suspend fun deleteSong(song: Song) = songDao.delete(song)
+
+    suspend fun songExists(filePath: String): Boolean = songDao.getSongByFilePath(filePath) != null
 }

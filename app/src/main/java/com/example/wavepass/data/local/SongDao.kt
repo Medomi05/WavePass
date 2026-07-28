@@ -25,4 +25,7 @@ interface SongDao {
 
     @Query("SELECT * FROM songs WHERE id = :songId")
     suspend fun getSongById(songId: Long): Song?
+
+    @Query("SELECT * FROM songs WHERE filePath = :filePath LIMIT 1")
+    suspend fun getSongByFilePath(filePath: String): Song?
 }
