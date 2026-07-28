@@ -29,7 +29,7 @@ fun MusicScreen() {
     val context = LocalContext.current
     val database = WavePassDatabase.getInstance(context)
     val repository = remember { SongRepository(database.songDao()) }
-    val audioPlayerManager = remember { AudioPlayerManager(context) }
+    val audioPlayerManager = remember { AudioPlayerManager.getInstance(context) }
     val viewModel: MusicViewModel = viewModel(
         factory = MusicViewModelFactory(repository, audioPlayerManager)
     )
