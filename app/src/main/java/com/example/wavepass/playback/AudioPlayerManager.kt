@@ -46,6 +46,8 @@ class AudioPlayerManager private constructor(context: Context) {
     private var queueSongs: List<Song> = emptyList()
     private var hasRestoredSession = false
 
+    private var pendingRestorePositionMs: Long? = null
+
     init {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -59,9 +61,24 @@ class AudioPlayerManager private constructor(context: Context) {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val index = player.currentMediaItemIndex
                 _currentSong.value = queueSongs.getOrNull(index)
-                _durationMs.value = player.duration.coerceAtLeast(0L)
-                _currentPositionMs.value = 0L
+
+                if (pendingRestorePositionMs == null) {
+                    _currentPositionMs.value = 0L
+                }
+
                 savePlaybackState()
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) {
+                    _durationMs.value = player.duration.coerceAtLeast(0L)
+
+                    pendingRestorePositionMs?.let { restorePosition ->
+                        player.seekTo(restorePosition)
+                        _currentPositionMs.value = restorePosition
+                        pendingRestorePositionMs = null
+                    }
+                }
             }
 
             override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
@@ -120,9 +137,8 @@ class AudioPlayerManager private constructor(context: Context) {
         if (index == -1) return false
 
         val lastPositionMs = prefs.getLong(KEY_LAST_POSITION_MS, 0L)
+        pendingRestorePositionMs = lastPositionMs
         setQueue(allSongs, index, autoPlay = false)
-        player.seekTo(lastPositionMs)
-        _currentPositionMs.value = lastPositionMs
         return true
     }
 
@@ -189,5 +205,9 @@ class AudioPlayerManager private constructor(context: Context) {
                 INSTANCE ?: AudioPlayerManager(context).also { INSTANCE = it }
             }
         }
+    }
+
+    fun saveStateNow() {
+        savePlaybackState()
     }
 }

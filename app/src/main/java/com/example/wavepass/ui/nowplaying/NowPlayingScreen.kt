@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -64,31 +65,48 @@ fun NowPlayingScreen() {
     val actualPositionMs by audioPlayerManager.currentPositionMs.collectAsState()
     val durationMs by audioPlayerManager.durationMs.collectAsState()
 
-    // While the user is dragging the slider, we show their dragged position
-    // instead of the real playback position, until they release it.
     var isDragging by remember { mutableStateOf(false) }
     var draggedPositionMs by remember { mutableStateOf(0f) }
 
     val displayedPositionMs = if (isDragging) draggedPositionMs.toLong() else actualPositionMs
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(48.dp))
 
-        AlbumArt(albumArtPath = currentSong?.albumArtPath)
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        if (currentSong == null) {
-            Text("Nothing is playing yet", style = MaterialTheme.typography.bodyLarge)
-        } else {
-            Text(currentSong!!.title, style = MaterialTheme.typography.headlineSmall)
-            Text(currentSong!!.artist, style = MaterialTheme.typography.bodyMedium)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            AlbumArt(albumArtPath = currentSong?.albumArtPath)
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (currentSong == null) {
+            Text(
+                "Nothing is playing yet",
+                style = MaterialTheme.typography.bodyLarge
+            )
+        } else {
+            Text(
+                currentSong!!.title,
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                currentSong!!.artist,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         CustomProgressBar(
             positionMs = displayedPositionMs,
@@ -107,11 +125,17 @@ fun NowPlayingScreen() {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(formatMillis(displayedPositionMs), style = MaterialTheme.typography.bodySmall)
-            Text(formatMillis(durationMs), style = MaterialTheme.typography.bodySmall)
+            Text(
+                formatMillis(displayedPositionMs),
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                formatMillis(durationMs),
+                style = MaterialTheme.typography.bodySmall
+            )
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -121,37 +145,56 @@ fun NowPlayingScreen() {
                 Icon(
                     imageVector = Icons.Filled.Shuffle,
                     contentDescription = "Shuffle",
-                    tint = if (isShuffleEnabled) MaterialTheme.colorScheme.primary else Color.Gray
+                    tint = if (isShuffleEnabled)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        Color.Gray
                 )
             }
 
             IconButton(onClick = { audioPlayerManager.previous() }) {
-                Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous")
+                Icon(
+                    Icons.Filled.SkipPrevious,
+                    contentDescription = "Previous"
+                )
             }
 
             IconButton(onClick = { audioPlayerManager.playPause() }) {
                 Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    imageVector = if (isPlaying)
+                        Icons.Filled.Pause
+                    else
+                        Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play"
                 )
             }
 
             IconButton(onClick = { audioPlayerManager.next() }) {
-                Icon(Icons.Filled.SkipNext, contentDescription = "Next")
+                Icon(
+                    Icons.Filled.SkipNext,
+                    contentDescription = "Next"
+                )
             }
 
             IconButton(onClick = { audioPlayerManager.cycleRepeatMode() }) {
                 Icon(
-                    imageVector = if (repeatMode == Player.REPEAT_MODE_ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                    imageVector = if (repeatMode == Player.REPEAT_MODE_ONE)
+                        Icons.Filled.RepeatOne
+                    else
+                        Icons.Filled.Repeat,
                     contentDescription = "Repeat",
-                    tint = if (repeatMode != Player.REPEAT_MODE_OFF) MaterialTheme.colorScheme.primary else Color.Gray
+                    tint = if (repeatMode != Player.REPEAT_MODE_OFF)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        Color.Gray
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
-// Formats milliseconds as m:ss (e.g. 3:07)
 private fun formatMillis(ms: Long): String {
     val totalSeconds = TimeUnit.MILLISECONDS.toSeconds(ms.coerceAtLeast(0L))
     val minutes = totalSeconds / 60
@@ -167,7 +210,12 @@ private fun CustomProgressBar(
     onDragFinished: () -> Unit
 ) {
     var trackWidthPx by remember { mutableStateOf(0f) }
-    val progress = if (durationMs > 0) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+
+    val progress =
+        if (durationMs > 0)
+            (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+        else
+            0f
 
     Box(
         modifier = Modifier
@@ -177,7 +225,9 @@ private fun CustomProgressBar(
             .pointerInput(durationMs) {
                 detectTapGestures { offset ->
                     if (trackWidthPx > 0 && durationMs > 0) {
-                        val tappedFraction = (offset.x / trackWidthPx).coerceIn(0f, 1f)
+                        val tappedFraction =
+                            (offset.x / trackWidthPx).coerceIn(0f, 1f)
+
                         onDrag((tappedFraction * durationMs).toLong())
                         onDragFinished()
                     }
@@ -188,7 +238,9 @@ private fun CustomProgressBar(
                     onDragEnd = { onDragFinished() },
                     onDrag = { change, _ ->
                         if (trackWidthPx > 0 && durationMs > 0) {
-                            val draggedFraction = (change.position.x / trackWidthPx).coerceIn(0f, 1f)
+                            val draggedFraction =
+                                (change.position.x / trackWidthPx).coerceIn(0f, 1f)
+
                             onDrag((draggedFraction * durationMs).toLong())
                         }
                     }
@@ -196,29 +248,28 @@ private fun CustomProgressBar(
             },
         contentAlignment = Alignment.CenterStart
     ) {
-        // Track background
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(4.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
-                .onGloballyPositioned { coordinates ->
-                    trackWidthPx = coordinates.size.width.toFloat()
+                .onGloballyPositioned {
+                    trackWidthPx = it.size.width.toFloat()
                 }
         )
 
-        // Filled progress
         Box(
             modifier = Modifier
-                .fillMaxWidth(fraction = progress)
+                .fillMaxWidth(progress)
                 .height(4.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary)
         )
 
-        // Draggable thumb
         val thumbOffsetPx = (trackWidthPx * progress).roundToInt()
+
         Box(
             modifier = Modifier
                 .offset { IntOffset(thumbOffsetPx - 28, 0) }
@@ -233,9 +284,9 @@ private fun CustomProgressBar(
 private fun AlbumArt(albumArtPath: String?) {
     Box(
         modifier = Modifier
-            .fillMaxWidth(0.7f)
+            .fillMaxHeight(0.9f)
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(16.dp)),
+            .clip(RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
         if (albumArtPath != null) {
@@ -243,14 +294,15 @@ private fun AlbumArt(albumArtPath: String?) {
                 model = albumArtPath,
                 contentDescription = "Album cover",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(16.dp))
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp))
             )
         } else {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(16.dp))
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
