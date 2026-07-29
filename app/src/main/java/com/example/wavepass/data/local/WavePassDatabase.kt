@@ -11,7 +11,7 @@ import androidx.room.TypeConverters
 // of the database exists at any time.
 @Database(
     entities = [Song::class, WaveProfile::class, Encounter::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 
@@ -32,7 +32,9 @@ abstract class WavePassDatabase : RoomDatabase() {
                     context.applicationContext,
                     WavePassDatabase::class.java,
                     "wavepass_database"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }

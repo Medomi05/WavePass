@@ -9,7 +9,8 @@ data class Song(
     val id: Long = 0,
     val title: String,
     val artist: String,
-    val filePath: String,       // local path of the audio file
-    val durationMs: Long,       // total length of the song (ms)
+    val filePath: String,
+    val durationMs: Long,
+    val albumArtPath: String? = null,
     val snippetStartMs: Long? = null
 )

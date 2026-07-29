@@ -68,6 +68,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.common)
+    implementation(libs.coil.compose)
 
     // Room
     implementation(libs.room.runtime)

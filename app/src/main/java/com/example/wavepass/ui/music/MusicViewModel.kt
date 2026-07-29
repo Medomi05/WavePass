@@ -41,17 +41,40 @@ class MusicViewModel(
                 val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                     ?.toLongOrNull() ?: 0L
 
+                // Try to extract embedded cover art from the file itself.
+                val embeddedArt = retriever.embeddedPicture
+                val albumArtPath = embeddedArt?.let { saveAlbumArt(context, it) }
+
                 context.contentResolver.takePersistableUriPermission(
                     uri,
                     android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
 
                 songRepository.addSong(
-                    Song(title = title, artist = artist, filePath = filePath, durationMs = durationMs)
+                    Song(
+                        title = title,
+                        artist = artist,
+                        filePath = filePath,
+                        durationMs = durationMs,
+                        albumArtPath = albumArtPath
+                    )
                 )
             } finally {
                 retriever.release()
             }
+        }
+    }
+
+    // Saves embedded album art bytes as a file in the app's private storage,
+    // and returns the path to it. Returns null if writing fails.
+    private fun saveAlbumArt(context: Context, imageBytes: ByteArray): String? {
+        return try {
+            val fileName = "album_art_${System.currentTimeMillis()}.jpg"
+            val file = java.io.File(context.filesDir, fileName)
+            file.writeBytes(imageBytes)
+            file.absolutePath
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -64,6 +87,13 @@ class MusicViewModel(
         }
     }
 
-    // No longer releases the player here — it's a shared singleton now,
-    // released only when the whole app process dies (see Application class, next step).
+    init {
+        viewModelScope.launch {
+            songs.collect { list ->
+                if (list.isNotEmpty()) {
+                    audioPlayerManager.restoreLastSessionIfNeeded(list)
+                }
+            }
+        }
+    }
 }
