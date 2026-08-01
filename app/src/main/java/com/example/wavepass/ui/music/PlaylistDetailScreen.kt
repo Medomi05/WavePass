@@ -24,10 +24,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,12 +53,8 @@ fun PlaylistDetailScreen(
     val playlistWithSongs by playlistViewModel.selectedPlaylistWithSongs.collectAsState()
     val playlistId = playlistWithSongs?.playlist?.id
 
-    // Local, mutable copy of the song order, so dragging feels instant
-    // instead of waiting for a round-trip to the database on every move.
     var orderedSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
 
-    // Re-sync local order whenever the underlying data changes for real
-    // (e.g. a song was added/removed), but don't fight the user mid-drag.
     LaunchedEffect(playlistWithSongs?.songs) {
         orderedSongs = playlistWithSongs?.songs ?: emptyList()
     }
@@ -122,108 +119,124 @@ private fun ReorderableSongList(
     onRemove: (Song) -> Unit,
     onPlay: (Song) -> Unit
 ) {
-    // Height of a single row, measured at runtime, used to figure out
-    // how many positions a drag has crossed.
+    // Always holds the latest values, so the long-running drag gesture coroutine
+    // (which is NOT restarted on every reorder, see pointerInput key below)
+    // never operates on stale, captured-at-launch data.
+    val latestSongs by rememberUpdatedState(songs)
+    val latestOnOrderChanged by rememberUpdatedState(onOrderChanged)
+
     var rowHeightPx by remember { mutableFloatStateOf(0f) }
 
-    // Index of the item currently being dragged, and how far it has been dragged (in px).
-    var draggedIndex by remember { mutableIntStateOf(-1) }
+    // Identity (not index!) of the song currently being dragged, and how far
+    // it has been dragged in px. Using the song's own id (not its position)
+    // means this stays correct even as the list reorders mid-drag.
+    var draggedSongId by remember { mutableStateOf<Long?>(null) }
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         songs.forEachIndexed { index, song ->
-            val isBeingDragged = index == draggedIndex
+            // key() tells Compose to track this composable by the song's identity,
+            // not by its slot/position in the list. Without this, reordering the
+            // list can make Compose reuse a row's remembered state for the wrong song.
+            key(song.id) {
+                val isBeingDragged = song.id == draggedSongId
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onGloballyPositioned { coordinates ->
-                        if (rowHeightPx == 0f) rowHeightPx = coordinates.size.height.toFloat()
-                    }
-                    .graphicsLayer {
-                        translationY = if (isBeingDragged) dragOffsetPx else 0f
-                    }
-                    .zIndex(if (isBeingDragged) 1f else 0f)
-                    .background(
-                        if (isBeingDragged) MaterialTheme.colorScheme.surfaceVariant
-                        else MaterialTheme.colorScheme.background
-                    )
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
                 Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            if (rowHeightPx == 0f) rowHeightPx = coordinates.size.height.toFloat()
+                        }
+                        .graphicsLayer {
+                            translationY = if (isBeingDragged) dragOffsetPx else 0f
+                        }
+                        .zIndex(if (isBeingDragged) 1f else 0f)
+                        .background(
+                            if (isBeingDragged) MaterialTheme.colorScheme.surfaceVariant
+                            else MaterialTheme.colorScheme.background
+                        )
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .pointerInput(songs) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = {
-                                        draggedIndex = index
-                                        dragOffsetPx = 0f
-                                    },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        dragOffsetPx += dragAmount.y
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                // Keyed on the song's id, which never changes for this row
+                                // across reorders — so this gesture detector coroutine
+                                // keeps running uninterrupted for the whole drag session,
+                                // no matter how many times the list order changes.
+                                .pointerInput(song.id) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            draggedSongId = song.id
+                                            dragOffsetPx = 0f
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            dragOffsetPx += dragAmount.y
 
-                                        if (rowHeightPx > 0f) {
-                                            val currentDragged = draggedIndex
-                                            if (currentDragged == -1) return@detectDragGesturesAfterLongPress
+                                            if (rowHeightPx > 0f) {
+                                                val currentSongs = latestSongs
+                                                val currentDraggedId = draggedSongId ?: return@detectDragGesturesAfterLongPress
+                                                val currentIndex = currentSongs.indexOfFirst { it.id == currentDraggedId }
+                                                if (currentIndex == -1) return@detectDragGesturesAfterLongPress
 
-                                            val positionsMoved = (dragOffsetPx / rowHeightPx).let {
-                                                if (it >= 0) kotlin.math.floor(it).toInt()
-                                                else kotlin.math.ceil(it).toInt()
+                                                val positionsMoved = (dragOffsetPx / rowHeightPx).let {
+                                                    if (it >= 0) kotlin.math.floor(it).toInt()
+                                                    else kotlin.math.ceil(it).toInt()
+                                                }
+
+                                                val targetIndex = (currentIndex + positionsMoved)
+                                                    .coerceIn(0, currentSongs.lastIndex)
+
+                                                if (targetIndex != currentIndex) {
+                                                    val mutable = currentSongs.toMutableList()
+                                                    val moved = mutable.removeAt(currentIndex)
+                                                    mutable.add(targetIndex, moved)
+
+                                                    // Adjust offset so the item doesn't visually "jump"
+                                                    // now that its index reference point has changed.
+                                                    dragOffsetPx -= (targetIndex - currentIndex) * rowHeightPx
+
+                                                    latestOnOrderChanged(mutable)
+                                                }
                                             }
-
-                                            val targetIndex = (currentDragged + positionsMoved)
-                                                .coerceIn(0, songs.lastIndex)
-
-                                            if (targetIndex != currentDragged) {
-                                                val mutable = songs.toMutableList()
-                                                val moved = mutable.removeAt(currentDragged)
-                                                mutable.add(targetIndex, moved)
-
-                                                // Adjust offset so the item doesn't visually "jump"
-                                                // now that its index reference point has changed.
-                                                dragOffsetPx -= (targetIndex - currentDragged) * rowHeightPx
-                                                draggedIndex = targetIndex
-
-                                                onOrderChanged(mutable)
-                                            }
+                                        },
+                                        onDragEnd = {
+                                            draggedSongId = null
+                                            dragOffsetPx = 0f
+                                        },
+                                        onDragCancel = {
+                                            draggedSongId = null
+                                            dragOffsetPx = 0f
                                         }
-                                    },
-                                    onDragEnd = {
-                                        draggedIndex = -1
-                                        dragOffsetPx = 0f
-                                    },
-                                    onDragCancel = {
-                                        draggedIndex = -1
-                                        dragOffsetPx = 0f
-                                    }
-                                )
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.DragHandle, contentDescription = "Drag to reorder")
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.DragHandle, contentDescription = "Drag to reorder")
+                        }
+
+                        Column(
+                            modifier = Modifier.padding(start = 8.dp)
+                        ) {
+                            Text(song.title, style = MaterialTheme.typography.bodyLarge)
+                            Text(song.artist, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
 
-                    Column(
-                        modifier = Modifier.padding(start = 8.dp)
-                    ) {
-                        Text(song.title, style = MaterialTheme.typography.bodyLarge)
-                        Text(song.artist, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-
-                Row {
-                    IconButton(onClick = { onPlay(song) }) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = "Play")
-                    }
-                    IconButton(onClick = { onRemove(song) }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Remove from playlist")
+                    Row {
+                        IconButton(onClick = { onPlay(song) }) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = "Play")
+                        }
+                        IconButton(onClick = { onRemove(song) }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Remove from playlist")
+                        }
                     }
                 }
             }
