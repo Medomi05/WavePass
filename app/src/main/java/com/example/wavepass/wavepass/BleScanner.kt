@@ -1,6 +1,7 @@
 package com.example.wavepass.wavepass
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
@@ -13,10 +14,10 @@ import java.util.UUID
 data class DiscoveredDevice(
     val remoteAnonymousId: String,
     val rssi: Int,
-    val lastSeenAtMillis: Long
+    val lastSeenAtMillis: Long,
+    val device: BluetoothDevice
 )
 
-// Wraps BLE scanning, filtered specifically to WavePass devices via our custom service UUID.
 class BleScanner(context: Context) {
 
     private val bluetoothAdapter = (context.getSystemService(Context.BLUETOOTH_SERVICE)
@@ -54,7 +55,8 @@ class BleScanner(context: Context) {
                     DiscoveredDevice(
                         remoteAnonymousId = remoteId,
                         rssi = result.rssi,
-                        lastSeenAtMillis = System.currentTimeMillis()
+                        lastSeenAtMillis = System.currentTimeMillis(),
+                        device = result.device
                     )
                 )
             }
