@@ -5,14 +5,18 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,17 +30,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.wavepass.data.local.Encounter
 import com.example.wavepass.wavepass.WavePassViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun WavePassScreen() {
-
     val context = LocalContext.current
     val viewModel: WavePassViewModel = viewModel()
 
     val isDetectionEnabled by viewModel.isDetectionEnabled.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val nearbyDevices by viewModel.nearbyDevices.collectAsState()
+    val encounters by viewModel.encounters.collectAsState()
 
     val requiredPermissions =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -46,52 +54,32 @@ fun WavePassScreen() {
                 Manifest.permission.BLUETOOTH_CONNECT
             )
         } else {
-            listOf(
-                Manifest.permission.ACCESS_FINE_LOCATION
-            )
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 
     fun allPermissionsGranted(): Boolean {
         return requiredPermissions.all { permission ->
-            ContextCompat.checkSelfPermission(
-                context,
-                permission
-            ) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
         }
     }
 
-    var hasPermissions by remember {
-        mutableStateOf(allPermissionsGranted())
-    }
+    var hasPermissions by remember { mutableStateOf(allPermissionsGranted()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
-
         hasPermissions = results.values.all { it }
-
         if (hasPermissions && !isDetectionEnabled) {
             viewModel.toggleDetection()
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp)
-    ) {
-
-        Text(
-            text = "StreetPass",
-            style = MaterialTheme.typography.headlineSmall
-        )
+    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+        Text(text = "StreetPass", style = MaterialTheme.typography.headlineSmall)
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Text(
-            text = statusMessage,
-            style = MaterialTheme.typography.bodyMedium
-        )
+        Text(text = statusMessage, style = MaterialTheme.typography.bodyMedium)
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -99,44 +87,85 @@ fun WavePassScreen() {
             onClick = {
                 if (isDetectionEnabled) {
                     viewModel.toggleDetection()
+                } else if (allPermissionsGranted()) {
+                    hasPermissions = true
+                    viewModel.toggleDetection()
                 } else {
-                    if (allPermissionsGranted()) {
-                        hasPermissions = true
-                        viewModel.toggleDetection()
-                    } else {
-                        permissionLauncher.launch(requiredPermissions.toTypedArray())
-                    }
+                    permissionLauncher.launch(requiredPermissions.toTypedArray())
                 }
             }
         ) {
-            Text(
-                if (isDetectionEnabled)
-                    "Turn off detection"
-                else
-                    "Turn on detection"
-            )
+            Text(if (isDetectionEnabled) "Turn off detection" else "Turn on detection")
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "Nearby devices right now: ${nearbyDevices.size}",
+            style = MaterialTheme.typography.bodySmall
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        if (nearbyDevices.isEmpty()) {
-            Text("No nearby devices detected yet.")
+        Text(text = "Encounters", style = MaterialTheme.typography.titleMedium)
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (encounters.isEmpty()) {
+            Text("No encounters yet. Turn on detection and cross paths with someone.")
         } else {
-
-            Text(
-                text = "Nearby devices: ${nearbyDevices.size}",
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
             LazyColumn {
-                items(nearbyDevices.values.toList()) { device ->
-                    Text(
-                        text = "Device ${device.remoteAnonymousId} — RSSI: ${device.rssi}"
-                    )
+                items(encounters, key = { it.id }) { encounter ->
+                    EncounterCard(encounter)
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
             }
         }
     }
+}
+
+@Composable
+private fun EncounterCard(encounter: Encounter) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = encounter.remoteDisplayAlias, style = MaterialTheme.typography.titleSmall)
+                if (encounter.encounterCount > 1) {
+                    Text(
+                        text = "Met ${encounter.encounterCount} times",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "Favorite artist: ${encounter.favoriteArtist}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            if (encounter.favoriteSongTitles.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                encounter.favoriteSongTitles.forEach { title ->
+                    Text(text = "• $title", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = formatEncounterTime(encounter.receivedAtTimestamp),
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+    }
+}
+
+private fun formatEncounterTime(timestampMillis: Long): String {
+    val formatter = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
+    return formatter.format(Date(timestampMillis))
 }
